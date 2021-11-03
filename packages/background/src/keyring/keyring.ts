@@ -1,6 +1,7 @@
 import { Crypto, KeyStore } from "./crypto";
 import {
   Mnemonic,
+  PrivKeyEthSecp256k1,
   PrivKeySecp256k1,
   PubKeySecp256k1,
   RNG,
@@ -13,6 +14,7 @@ import { Env } from "@keplr-wallet/router";
 
 import { Buffer } from "buffer/";
 import { ChainIdHelper } from "@keplr-wallet/cosmos";
+import { Wallet } from 'ethers';
 
 export enum KeyRingStatus {
   NOTLOADED,
@@ -169,6 +171,10 @@ export class KeyRing {
   }
 
   public getKey(chainId: string, defaultCoinType: number): Key {
+    if(chainId === "dig"){
+      return this.loadEthKey();
+    }
+
     return this.loadKey(this.computeKeyStoreCoinType(chainId, defaultCoinType));
   }
 
@@ -195,7 +201,11 @@ export class KeyRing {
       : defaultCoinType;
   }
 
-  public getKeyFromCoinType(coinType: number): Key {
+  public getKeyFromCoinType(chainId: string, coinType: number): Key {
+    if(chainId === "dig"){
+      return this.loadEthKey();
+    }
+    
     return this.loadKey(coinType);
   }
 
@@ -634,6 +644,88 @@ export class KeyRing {
       throw new Error("Unexpected type of keyring");
     }
   }
+  //============ Eth address keyring ============
+  private loadEthKey(): Key {
+    if (this.status !== KeyRingStatus.UNLOCKED) {
+      throw new Error("Key ring is not unlocked");
+    }
+
+    if (!this.keyStore) {
+      throw new Error("Key Store is empty");
+    }
+
+    if (this.keyStore.type === "ledger") {
+      if (!this.ledgerPublicKey) {
+        throw new Error("Ledger public key not set");
+      }
+
+      const pubKey = new PubKeySecp256k1(this.ledgerPublicKey);
+
+      return {
+        algo: "secp256k1",
+        pubKey: pubKey.toBytes(),
+        address: pubKey.getAddress(),
+        isNanoLedger: true,
+      };
+    } else {
+      const privKey = this.loadEthPrivKey();
+      const pubKey = privKey.getPubKey();
+
+      return {
+        algo: "secp256k1",
+        pubKey: pubKey.toBytes(),
+        address: pubKey.getAddress(),
+        isNanoLedger: false,
+      };
+    }
+  }
+
+  private loadEthPrivKey(): PrivKeyEthSecp256k1 {
+    if (
+      this.status !== KeyRingStatus.UNLOCKED ||
+      this.type === "none" ||
+      !this.keyStore
+    ) {
+      throw new Error("Key ring is not unlocked");
+    }
+
+    //const bip44HDPath = KeyRing.getKeyStoreBIP44Path(this.keyStore);
+
+    if (this.type === "mnemonic") {
+      /* to be researched later
+      const path = `m/44'/${coinType}'/${bip44HDPath.account}'/${bip44HDPath.change}/${bip44HDPath.addressIndex}`;
+      const cachedKey = this.cached.get(path);
+      if (cachedKey) {
+        return new PrivKeySecp256k1(cachedKey);
+      }
+      */
+
+      if (!this.mnemonic) {
+        throw new Error(
+          "Key store type is mnemonic and it is unlocked. But, mnemonic is not loaded unexpectedly"
+        );
+      }
+
+      const wallet = Wallet.fromMnemonic(this.mnemonic);
+
+      //this.cached.set(path, privKey);
+      return new PrivKeyEthSecp256k1(wallet);
+    } else if (this.type === "privateKey") {
+      // If key store type is private key, path will be ignored.
+
+      if (!this.privateKey) {
+        throw new Error(
+          "Key store type is private key and it is unlocked. But, private key is not loaded unexpectedly"
+        );
+      }
+
+      return new PrivKeyEthSecp256k1(new Wallet(this.privateKey));
+    } else {
+      throw new Error("Unexpected type of keyring");
+    }
+  }
+
+  //============ End Eth address keyring ============
 
   public async sign(
     env: Env,
@@ -663,6 +755,10 @@ export class KeyRing {
         message
       );
     } else {
+      if(chainId === "dig"){
+        const privKey = this.loadEthPrivKey();
+        return privKey.sign(message);
+      }
       const coinType = this.computeKeyStoreCoinType(chainId, defaultCoinType);
 
       const privKey = this.loadPrivKey(coinType);
