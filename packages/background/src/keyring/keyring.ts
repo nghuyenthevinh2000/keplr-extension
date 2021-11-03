@@ -201,8 +201,8 @@ export class KeyRing {
       : defaultCoinType;
   }
 
-  public getKeyFromCoinType(chainId: string, coinType: number): Key {
-    if(chainId === "dig"){
+  public getKeyFromCoinType(coinType: number): Key {
+    if(coinType === 202){
       return this.loadEthKey();
     }
     

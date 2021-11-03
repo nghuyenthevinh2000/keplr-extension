@@ -392,8 +392,8 @@ export class KeyRingService {
     const chainInfo = await this.chainsService.getChainInfo(chainId);
 
     for (const path of paths) {
-      const key = await this.keyRing.getKeyFromCoinType(chainId, path.coinType);
-      const isEthAddr = (chainId === "dig") ? true : false;
+      const key = await this.keyRing.getKeyFromCoinType(path.coinType);
+      const isEthAddr = (path.coinType == 202) ? true : false;
 
       const bech32Address = new Bech32Address(key.address).toBech32(
         chainInfo.bech32Config.bech32PrefixAccAddr, isEthAddr
